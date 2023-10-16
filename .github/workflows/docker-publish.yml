@@ -24,7 +24,7 @@ env:
   REGISTRY: docker.io
   # github.repository as <account>/<repo>
 #  IMAGE_NAME: ${{ github.repository }}
-  IMAGE_NAME: ${{ secrets.DOCKER_USERNAME }}/autodocker
+  IMAGE_NAME: ${{ secrets.DOCKER_USERNAME }}/gql_projects
 
 jobs:
   build:
