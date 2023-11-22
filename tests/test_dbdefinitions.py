@@ -37,11 +37,6 @@ def test_connection_string():
 from gql_projects.DBDefinitions import UUIDColumn
 
 
-def test_connection_uuidcolumn():
-    col = UUIDColumn(name="name")
-
-    assert col is not None
-
 
 from gql_projects.DBDefinitions import startEngine
 

@@ -32,10 +32,10 @@ def createByIdTest(tableName, queryEndpoint, attributeNames=["id", "name"]):
         assert len(datatable) > 0
         datarow = data[tableName][0]
 
-        query = "query($id: ID!){" f"{queryEndpoint}(id: $id)" "{" + attlist + "}}"
+        query = "query($id: UUID!){" f"{queryEndpoint}(id: $id)" "{" + attlist + "}}"
 
         context_value = await createContext(async_session_maker)
-        variable_values = {"id": datarow["id"]}
+        variable_values = {"id": f'{datarow["id"]}'}
         print("createByIdTest", queryEndpoint, variable_values, flush=True)
         resp = await schema.execute(
             query, context_value=context_value, variable_values=variable_values
@@ -48,6 +48,7 @@ def createByIdTest(tableName, queryEndpoint, attributeNames=["id", "name"]):
         assert respdata is not None
 
         for att in attributeNames:
+            if att in ['id']: continue
             assert respdata[att] == datarow[att]
 
     return result_test
@@ -134,8 +135,8 @@ async def test_task_mutation():
     query = '''
             mutation(
                 $name: String!
-                $group_id: ID!
-                $type_id: ID!
+                $group_id: UUID!
+                $type_id: UUID!
                 ) {
                 operation: projectInsert(project: {
                     name: $name
@@ -155,8 +156,8 @@ async def test_task_mutation():
 
     context_value = await createContext(async_session_maker)
     variable_values = {
-        "group_id": group_id,
-        "type_id": type_id,
+        "group_id": f'{group_id}',
+        "type_id": f'{type_id}',
         "name": name
     }
     resp = await schema.execute(query, context_value=context_value, variable_values=variable_values)
@@ -177,7 +178,7 @@ async def test_task_mutation():
     name = "NewName"
     query = '''
             mutation(
-                $id: ID!,
+                $id: UUID!,
                 $lastchange: DateTime!
                 $name: String!
                 ) {

@@ -1,7 +1,7 @@
 from typing import List, Union
 import typing
 from unittest import result
-import strawberry as strawberryA
+import strawberry
 import uuid
 from contextlib import asynccontextmanager
 
@@ -40,67 +40,114 @@ from gql_projects.GraphResolvers import (
     resolveInsertProject,
 )
 
-
-@strawberryA.federation.type(
-    keys=["id"], description="""Entity representing a project"""
-)
-class ProjectGQLModel:
+class BaseGQLModel:
     @classmethod
-    async def resolve_reference(cls, info: strawberryA.types.Info, id: strawberryA.ID):
-        loader = getLoaders(info).projects
+    def getLoader(cls, info):
+        pass
+
+    @classmethod
+    async def resolve_reference(cls, info: strawberry.types.Info, id: uuid.UUID):
+        if id is None:
+            return None
+        loader = cls.getLoader(info)
+        if isinstance(id, str): id = uuid.UUID(id)
         result = await loader.load(id)
         if result is not None:
-            result._type_definition = cls._type_definition  # little hack :)
+            result.__strawberry_definition__ = cls.__strawberry_definition__  # little hack :)
         return result
+  
 
-    @strawberryA.field(description="""Primary key""")
-    def id(self) -> strawberryA.ID:
-        return self.id
+@strawberry.federation.type(extend=True, keys=["id"])
+class UserGQLModel:
+    id: uuid.UUID = strawberry.federation.field(external=True)
+    @classmethod
+    async def resolve_reference(cls, info: strawberry.types.Info, id: uuid.UUID):
+        return cls(id=id)
 
-    @strawberryA.field(description="""Name""")
-    def name(self) -> str:
-        return self.name
+@strawberry.field(description="""Entity primary key""")
+def resolve_id(self) -> uuid.UUID:
+    return self.id
 
-    @strawberryA.field(description="""Start date""")
+@strawberry.field(description="""Name """)
+def resolve_name(self) -> str:
+    return self.name
+
+@strawberry.field(description="""English name""")
+def resolve_name_en(self) -> str:
+    return self.name_en
+
+@strawberry.field(description="""Time of last update""")
+def resolve_lastchange(self) -> datetime.datetime:
+    return self.lastchange
+
+@strawberry.field(description="""Time of entity introduction""")
+def resolve_created(self) -> typing.Optional[datetime.datetime]:
+    return self.created
+
+async def resolve_user(user_id):
+    result = None if user_id is None else await UserGQLModel.resolve_reference(user_id)
+    return result
+    
+@strawberry.field(description="""Who created entity""")
+async def resolve_createdby(self) -> typing.Optional["UserGQLModel"]:
+    return await resolve_user(self.created_by)
+
+@strawberry.field(description="""Who made last change""")
+async def resolve_changedby(self) -> typing.Optional["UserGQLModel"]:
+    return await resolve_user(self.changedby)
+
+
+@strawberry.federation.type(
+    keys=["id"], description="""Entity representing a project"""
+)
+class ProjectGQLModel(BaseGQLModel):
+    @classmethod
+    def getLoader(cls, info):
+        return getLoaders(info).projects
+
+    id = resolve_id
+    name = resolve_name
+    lastchange = resolve_lastchange
+    changedby = resolve_changedby
+    created = resolve_created
+    createdby = resolve_createdby
+
+    @strawberry.field(description="""Start date""")
     def startdate(self) -> datetime.date:
         return self.startdate
 
-    @strawberryA.field(description="""End date""")
+    @strawberry.field(description="""End date""")
     def enddate(self) -> datetime.date:
         return self.enddate
 
-    @strawberryA.field(description="""Last change""")
-    def lastchange(self) -> datetime.datetime:
-        return self.lastchange
-
-    @strawberryA.field(description="""Last change""")
+    @strawberry.field(description="""Last change""")
     async def team(self) -> Union["GroupGQLModel", None]:
         result = await GroupGQLModel.resolve_reference(self.group_id)
         return result
 
-    @strawberryA.field(description="""Project type of project""")
-    async def project_type(self, info: strawberryA.types.Info) -> "ProjectTypeGQLModel":
+    @strawberry.field(description="""Project type of project""")
+    async def project_type(self, info: strawberry.types.Info) -> "ProjectTypeGQLModel":
         result = await ProjectTypeGQLModel.resolve_reference(info, self.projecttype_id)
         return result
 
-    @strawberryA.field(description="""List of finances, related to a project""")
+    @strawberry.field(description="""List of finances, related to a project""")
     async def finances(
-        self, info: strawberryA.types.Info
+        self, info: strawberry.types.Info
     ) -> typing.List["FinanceGQLModel"]:
         loader = getLoaders(info).finances
         result = await loader.filter_by(project_id=self.id)
         return result
 
-    @strawberryA.field(description="""List of milestones, related to a project""")
+    @strawberry.field(description="""List of milestones, related to a project""")
     async def milestones(
-        self, info: strawberryA.types.Info
+        self, info: strawberry.types.Info
     ) -> typing.List["MilestoneGQLModel"]:
         loader = getLoaders(info).milestones
         result = await loader.filter_by(project_id=self.id)
         return result
 
-    @strawberryA.field(description="""Group, related to a project""")
-    async def group(self, info: strawberryA.types.Info) -> "GroupGQLModel":
+    @strawberry.field(description="""Group, related to a project""")
+    async def group(self, info: strawberry.types.Info) -> "GroupGQLModel":
         return GroupGQLModel(id=self.group_id)
 
 
@@ -116,33 +163,25 @@ from gql_projects.GraphResolvers import (
 )
 
 
-@strawberryA.federation.type(
+@strawberry.federation.type(
     keys=["id"], description="""Entity representing a project types"""
 )
-class ProjectTypeGQLModel:
+class ProjectTypeGQLModel(BaseGQLModel):
     @classmethod
-    async def resolve_reference(cls, info: strawberryA.types.Info, id: strawberryA.ID):
-        loader = getLoaders(info).projecttypes
-        result = await loader.load(id)
-        if result is not None:
-            result._type_definition = cls._type_definition  # little hack :)
-        return result
+    def getLoader(cls, info):
+        return getLoaders(info).projecttypes
 
-    @strawberryA.field(description="""Primary key""")
-    def id(self) -> strawberryA.ID:
-        return self.id
+    id = resolve_id
+    name = resolve_name
+    name_en = resolve_name_en
+    lastchange = resolve_lastchange
+    changedby = resolve_changedby
+    created = resolve_created
+    createdby = resolve_createdby
 
-    @strawberryA.field(description="""Name""")
-    def name(self) -> str:
-        return self.name
-
-    @strawberryA.field(description="""Name""")
-    def name_en(self) -> str:
-        return self.name_en
-
-    @strawberryA.field(description="""List of projects, related to project type""")
+    @strawberry.field(description="""List of projects, related to project type""")
     async def projects(
-        self, info: strawberryA.types.Info
+        self, info: strawberry.types.Info
     ) -> typing.List["ProjectGQLModel"]:
         async with withInfo(info) as session:
             result = await resolveProjectsForProjectType(session, self.id)
@@ -158,52 +197,39 @@ from gql_projects.GraphResolvers import (
 )
 
 
-@strawberryA.federation.type(
+@strawberry.federation.type(
     keys=["id"], description="""Entity representing a finance"""
 )
-class FinanceGQLModel:
+class FinanceGQLModel(BaseGQLModel):
     @classmethod
-    async def resolve_reference(cls, info: strawberryA.types.Info, id: strawberryA.ID):
-        loader = getLoaders(info).finances
-        result = await loader.load(id)
-        if result is not None:
-            result._type_definition = cls._type_definition  # little hack :)
-        return result
+    def getLoader(cls, info):
+        return getLoaders(info).finances
 
-    @strawberryA.field(description="""Primary key""")
-    def id(self) -> strawberryA.ID:
-        return self.id
+    id = resolve_id
+    name = resolve_name
+    lastchange = resolve_lastchange
+    changedby = resolve_changedby
+    created = resolve_created
+    createdby = resolve_createdby
 
-    @strawberryA.field(description="""Time stamp""")
-    def lastchange(self) -> strawberryA.ID:
-        return self.lastchange
-
-    @strawberryA.field(description="""Name""")
-    def name(self) -> str:
-        return self.name
-
-    @strawberryA.field(description="""Amount""")
+    @strawberry.field(description="""Amount""")
     def amount(self) -> float:
         return self.amount
 
-    @strawberryA.field(description="""Last change""")
-    def lastchange(self) -> datetime.datetime:
-        return self.lastchange
-
-    @strawberryA.field(description="""Project of finance""")
-    async def project(self, info: strawberryA.types.Info) -> "ProjectGQLModel":
+    @strawberry.field(description="""Project of finance""")
+    async def project(self, info: strawberry.types.Info) -> "ProjectGQLModel":
         async with withInfo(info) as session:
             result = await resolveProjectById(session, self.project_id)
             return result
 
-    @strawberryA.field(description="""Finance type of finance""")
-    async def financeType(self, info: strawberryA.types.Info) -> "FinanceTypeGQLModel":
+    @strawberry.field(description="""Finance type of finance""")
+    async def financeType(self, info: strawberry.types.Info) -> "FinanceTypeGQLModel":
         async with withInfo(info) as session:
             result = await resolveFinanceTypeById(session, self.financetype_id)
             return result
 
-    @strawberryA.field(description="""Period which finances belongs to""")
-    async def event(self, info: strawberryA.types.Info) -> "EventGQLModel":
+    @strawberry.field(description="""Period which finances belongs to""")
+    async def event(self, info: strawberry.types.Info) -> "EventGQLModel":
         result = await EventGQLModel.resolve_reference(self.event_id)
         return result
 
@@ -217,33 +243,25 @@ from gql_projects.GraphResolvers import (
 )
 
 
-@strawberryA.federation.type(
+@strawberry.federation.type(
     keys=["id"], description="""Entity representing a finance type"""
 )
-class FinanceTypeGQLModel:
+class FinanceTypeGQLModel(BaseGQLModel):
     @classmethod
-    async def resolve_reference(cls, info: strawberryA.types.Info, id: strawberryA.ID):
-        loader = getLoaders(info).financetypes
-        result = await loader.load(id)
-        if result is not None:
-            result._type_definition = cls._type_definition  # little hack :)
-        return result
+    def getLoader(cls, info):
+        return getLoaders(info).financetypes
 
-    @strawberryA.field(description="""Primary key""")
-    def id(self) -> strawberryA.ID:
-        return self.id
+    id = resolve_id
+    name = resolve_name
+    name_en = resolve_name_en
+    lastchange = resolve_lastchange
+    changedby = resolve_changedby
+    created = resolve_created
+    createdby = resolve_createdby
 
-    @strawberryA.field(description="""Name""")
-    def name(self) -> str:
-        return self.name
-
-    @strawberryA.field(description="""Name""")
-    def name_en(self) -> str:
-        return self.name_en
-
-    @strawberryA.field(description="""List of finances, related to finance type""")
+    @strawberry.field(description="""List of finances, related to finance type""")
     async def finances(
-        self, info: strawberryA.types.Info
+        self, info: strawberry.types.Info
     ) -> typing.List["FinanceGQLModel"]:
         async with withInfo(info) as session:
             result = await resolveFinancesForFinanceType(session, self.id)
@@ -260,50 +278,38 @@ from gql_projects.GraphResolvers import (
 
 import asyncio
 
-@strawberryA.federation.type(
+@strawberry.federation.type(
     keys=["id"], description="""Entity representing a milestone"""
 )
-class MilestoneGQLModel:
+class MilestoneGQLModel(BaseGQLModel):
     @classmethod
-    async def resolve_reference(cls, info: strawberryA.types.Info, id: strawberryA.ID):
-        loader = getLoaders(info).milestones
-        result = await loader.load(id)
-        if result is not None:
-            result._type_definition = cls._type_definition  # little hack :)
-        return result
+    def getLoader(cls, info):
+        return getLoaders(info).milestones
 
-    @strawberryA.field(description="""Primary key""")
-    def id(self) -> strawberryA.ID:
-        return self.id
+    id = resolve_id
+    name = resolve_name
+    name_en = resolve_name_en
+    lastchange = resolve_lastchange
+    changedby = resolve_changedby
+    created = resolve_created
+    createdby = resolve_createdby
 
-    @strawberryA.field(description="""Time stamp""")
-    def lastchange(self) -> strawberryA.ID:
-        return self.lastchange
-
-    @strawberryA.field(description="""Name""")
-    def name(self) -> str:
-        return self.name
-
-    @strawberryA.field(description="""Date""")
+    @strawberry.field(description="""Date""")
     def startdate(self) -> datetime.date:
         return self.startdate
 
-    @strawberryA.field(description="""Date""")
+    @strawberry.field(description="""Date""")
     def enddate(self) -> datetime.date:
         return self.enddate
 
-    @strawberryA.field(description="""Last change""")
-    def lastChange(self) -> datetime.datetime:
-        return self.lastChange
-
-    @strawberryA.field(description="""Project of milestone""")
-    async def project(self, info: strawberryA.types.Info) -> "ProjectGQLModel":
+    @strawberry.field(description="""Project of milestone""")
+    async def project(self, info: strawberry.types.Info) -> "ProjectGQLModel":
         async with withInfo(info) as session:
             result = await resolveProjectById(session, self.project_id)
             return result
 
-    @strawberryA.field(description="""Milestones which has this one as follower""")
-    async def previous(self, info: strawberryA.types.Info) -> List["MilestoneGQLModel"]:
+    @strawberry.field(description="""Milestones which has this one as follower""")
+    async def previous(self, info: strawberry.types.Info) -> List["MilestoneGQLModel"]:
         # async with withInfo(info) as session:
         #     result = await resolveProjectById(session, self.project_id)
         #     return result
@@ -312,8 +318,8 @@ class MilestoneGQLModel:
         awaitable = (MilestoneGQLModel.resolve_reference(info, row.previous_id) for row in rows)
         return await asyncio.gather(*awaitable)
 
-    @strawberryA.field(description="""Milestone which follow this milestone""")
-    async def nexts(self, info: strawberryA.types.Info) -> List["MilestoneGQLModel"]:
+    @strawberry.field(description="""Milestone which follow this milestone""")
+    async def nexts(self, info: strawberry.types.Info) -> List["MilestoneGQLModel"]:
         # async with withInfo(info) as session:
         #     result = await resolveProjectById(session, self.project_id)
         #     return result
@@ -326,25 +332,25 @@ class MilestoneGQLModel:
 # GQL GROUP
 from gql_projects.GraphResolvers import resolveProjectsForGroup
 
-@strawberryA.federation.type(extend=True, keys=["id"])
+@strawberry.federation.type(extend=True, keys=["id"])
 class EventGQLModel:
-    id: strawberryA.ID = strawberryA.federation.field(external=True)
+    id: uuid.UUID = strawberry.federation.field(external=True)
 
     @classmethod
-    async def resolve_reference(cls, id: strawberryA.ID):
+    async def resolve_reference(cls, id: uuid.UUID):
         return EventGQLModel(id=id)
 
-@strawberryA.federation.type(extend=True, keys=["id"])
+@strawberry.federation.type(extend=True, keys=["id"])
 class GroupGQLModel:
-    id: strawberryA.ID = strawberryA.federation.field(external=True)
+    id: uuid.UUID = strawberry.federation.field(external=True)
 
     @classmethod
-    async def resolve_reference(cls, id: strawberryA.ID):
+    async def resolve_reference(cls, id: uuid.UUID):
         return GroupGQLModel(id=id)
 
-    @strawberryA.field(description="""List of projects, related to group""")
+    @strawberry.field(description="""List of projects, related to group""")
     async def projects(
-        self, info: strawberryA.types.Info
+        self, info: strawberry.types.Info
     ) -> typing.List["ProjectGQLModel"]:
         async with withInfo(info) as session:
             result = await resolveProjectsForGroup(session, self.id)
@@ -360,67 +366,67 @@ class GroupGQLModel:
 from gql_projects.DBFeeder import randomDataStructure
 
 
-@strawberryA.type(description="""Type for query root""")
+@strawberry.type(description="""Type for query root""")
 class Query:
-    @strawberryA.field(description="""Returns a list of projects""")
+    @strawberry.field(description="""Returns a list of projects""")
     async def project_page(
-        self, info: strawberryA.types.Info, skip: int = 0, limit: int = 10
+        self, info: strawberry.types.Info, skip: int = 0, limit: int = 10
     ) -> List[ProjectGQLModel]:
         async with withInfo(info) as session:
             result = await resolveProjectAll(session, skip, limit)
             return result
 
-    @strawberryA.field(description="""Returns project by its id""")
+    @strawberry.field(description="""Returns project by its id""")
     async def project_by_id(
-        self, info: strawberryA.types.Info, id: strawberryA.ID
+        self, info: strawberry.types.Info, id: uuid.UUID
     ) -> Union[ProjectGQLModel, None]:
         async with withInfo(info) as session:
             result = await resolveProjectById(session, id)
             return result
 
-    @strawberryA.field(description="""Returns a list of project types""")
+    @strawberry.field(description="""Returns a list of project types""")
     async def project_type_page(
-        self, info: strawberryA.types.Info, skip: int = 0, limit: int = 10
+        self, info: strawberry.types.Info, skip: int = 0, limit: int = 10
     ) -> List[ProjectTypeGQLModel]:
         async with withInfo(info) as session:
             result = await resolveProjectTypeAll(session, skip, limit)
             return result
 
-    @strawberryA.field(description="""Returns a list of finances""")
+    @strawberry.field(description="""Returns a list of finances""")
     async def finance_page(
-        self, info: strawberryA.types.Info, skip: int = 0, limit: int = 10
+        self, info: strawberry.types.Info, skip: int = 0, limit: int = 10
     ) -> List[FinanceGQLModel]:
         async with withInfo(info) as session:
             result = await resolveFinanceAll(session, skip, limit)
             return result
 
-    @strawberryA.field(description="""Returns a list of finance types""")
+    @strawberry.field(description="""Returns a list of finance types""")
     async def finance_type_page(
-        self, info: strawberryA.types.Info, skip: int = 0, limit: int = 10
+        self, info: strawberry.types.Info, skip: int = 0, limit: int = 10
     ) -> List[FinanceTypeGQLModel]:
         async with withInfo(info) as session:
             result = await resolveFinanceTypeAll(session, skip, limit)
             return result
 
-    @strawberryA.field(description="""Returns a list of milestones""")
+    @strawberry.field(description="""Returns a list of milestones""")
     async def milestone_page(
-        self, info: strawberryA.types.Info, skip: int = 0, limit: int = 10
+        self, info: strawberry.types.Info, skip: int = 0, limit: int = 10
     ) -> List[MilestoneGQLModel]:
         async with withInfo(info) as session:
             result = await resolveMilestoneAll(session, skip, limit)
             return result
 
-    @strawberryA.field(description="""Returns a list of projects for group""")
+    @strawberry.field(description="""Returns a list of projects for group""")
     async def project_by_group(
-        self, info: strawberryA.types.Info, id: strawberryA.ID
+        self, info: strawberry.types.Info, id: uuid.UUID
     ) -> List[ProjectGQLModel]:
         async with withInfo(info) as session:
             result = await resolveProjectsForGroup(session, id)
             return result
 
-    @strawberryA.field(description="""Random publications""")
+    @strawberry.field(description="""Random publications""")
     async def randomProject(
-        self, info: strawberryA.types.Info
+        self, info: strawberry.types.Info
     ) -> Union[ProjectGQLModel, None]:
         async with withInfo(info) as session:
             result = await randomDataStructure(AsyncSessionFromInfo(info))
@@ -437,113 +443,113 @@ class Query:
 
 from typing import Optional
 
-@strawberryA.input
+@strawberry.input
 class ProjectInsertGQLModel:
-    projecttype_id: strawberryA.ID
+    projecttype_id: uuid.UUID
     name: str
 
-    id: Optional[strawberryA.ID] = None
+    id: Optional[uuid.UUID] = None
     name: Optional[str] = "Project"
     startdate: Optional[datetime.datetime] = datetime.datetime.now()
     enddate: Optional[datetime.datetime] = datetime.datetime.now()
 
-    group_id: Optional[strawberryA.ID] = None
+    group_id: Optional[uuid.UUID] = None
 
-@strawberryA.input
+@strawberry.input
 class ProjectUpdateGQLModel:
     lastchange: datetime.datetime
-    id: strawberryA.ID
+    id: uuid.UUID
     name: Optional[str] = None
-    projecttype_id: Optional[strawberryA.ID] = None
+    projecttype_id: Optional[uuid.UUID] = None
     startdate: Optional[datetime.datetime] = None
     enddate: Optional[datetime.datetime] = None
-    group_id: Optional[strawberryA.ID] = None
+    group_id: Optional[uuid.UUID] = None
     
-@strawberryA.type
+@strawberry.type
 class ProjectResultGQLModel:
-    id: strawberryA.ID = None
+    id: uuid.UUID = None
     msg: str = None
 
-    @strawberryA.field(description="""Result of user operation""")
-    async def project(self, info: strawberryA.types.Info) -> Union[ProjectGQLModel, None]:
+    @strawberry.field(description="""Result of user operation""")
+    async def project(self, info: strawberry.types.Info) -> Union[ProjectGQLModel, None]:
         result = await ProjectGQLModel.resolve_reference(info, self.id)
         return result
 
-@strawberryA.input
+@strawberry.input
 class FinanceInsertGQLModel:
     name: str
-    financetype_id: strawberryA.ID
-    project_id: strawberryA.ID
-    id: Optional[strawberryA.ID] = None
+    financetype_id: uuid.UUID
+    project_id: uuid.UUID
+    id: Optional[uuid.UUID] = None
     amount: Optional[float] = 0
 
-@strawberryA.input
+@strawberry.input
 class FinanceUpdateGQLModel:
     lastchange: datetime.datetime
-    id: strawberryA.ID
+    id: uuid.UUID
 
     name: Optional[str]
-    financetype_id: Optional[strawberryA.ID]
+    financetype_id: Optional[uuid.UUID]
     amount: Optional[float] = None
     
-@strawberryA.type
+@strawberry.type
 class FinanceResultGQLModel:
-    id: strawberryA.ID = None
-    project_id: strawberryA.Private[strawberryA.ID] = None
+    id: uuid.UUID = None
+    project_id: strawberry.Private[uuid.UUID] = None
     msg: str = None
 
-    @strawberryA.field(description="""Result of finance operation""")
-    async def finance(self, info: strawberryA.types.Info) -> Union[FinanceGQLModel, None]:
+    @strawberry.field(description="""Result of finance operation""")
+    async def finance(self, info: strawberry.types.Info) -> Union[FinanceGQLModel, None]:
         result = await FinanceGQLModel.resolve_reference(info, self.id)
         return result
     
-    @strawberryA.field(description="""Project related to finance operation result""")
-    async def project(self, info: strawberryA.types.Info) -> Union[ProjectGQLModel, None]:
+    @strawberry.field(description="""Project related to finance operation result""")
+    async def project(self, info: strawberry.types.Info) -> Union[ProjectGQLModel, None]:
         result = await ProjectGQLModel.resolve_reference(info, self.project_id)
         return result
 
-@strawberryA.input
+@strawberry.input
 class MilestoneInsertGQLModel:
     name: str
-    project_id: strawberryA.ID
+    project_id: uuid.UUID
     startdate: Optional[datetime.datetime] = datetime.datetime.now()
     enddate: Optional[datetime.datetime] = datetime.datetime.now() + datetime.timedelta(days=30)
-    id: Optional[strawberryA.ID] = None
+    id: Optional[uuid.UUID] = None
 
-@strawberryA.input
+@strawberry.input
 class MilestoneUpdateGQLModel:
     lastchange: datetime.datetime
-    id: strawberryA.ID
+    id: uuid.UUID
 
     name: Optional[str] = None
     startdate: Optional[datetime.datetime] = None
     enddate: Optional[datetime.datetime] = None
     
-@strawberryA.type
+@strawberry.type
 class MilestoneResultGQLModel:
-    id: strawberryA.ID = None
-    project_id: strawberryA.Private[strawberryA.ID] = None
+    id: uuid.UUID = None
+    project_id: strawberry.Private[uuid.UUID] = None
     msg: str = None
 
-    @strawberryA.field(description="""Result of user operation""")
-    async def milestone(self, info: strawberryA.types.Info) -> Union[MilestoneGQLModel, None]:
+    @strawberry.field(description="""Result of user operation""")
+    async def milestone(self, info: strawberry.types.Info) -> Union[MilestoneGQLModel, None]:
         result = await MilestoneGQLModel.resolve_reference(info, self.id)
         return result
 
-    @strawberryA.field(description="""Project related to milestone operation result""")
-    async def project(self, info: strawberryA.types.Info) -> Union[ProjectGQLModel, None]:
+    @strawberry.field(description="""Project related to milestone operation result""")
+    async def project(self, info: strawberry.types.Info) -> Union[ProjectGQLModel, None]:
         result = await ProjectGQLModel.resolve_reference(info, self.project_id)
         return result
 
-@strawberryA.input
+@strawberry.input
 class MilestoneLinkAddGQLModel:
-    previous_id: strawberryA.ID
-    next_id: strawberryA.ID
+    previous_id: uuid.UUID
+    next_id: uuid.UUID
     
-@strawberryA.federation.type(extend=True)
+@strawberry.federation.type(extend=True)
 class Mutation:
-    @strawberryA.mutation(description="Adds a new milestones link.")
-    async def milestones_link_add(self, info: strawberryA.types.Info, link: MilestoneLinkAddGQLModel) -> MilestoneResultGQLModel:
+    @strawberry.mutation(description="Adds a new milestones link.")
+    async def milestones_link_add(self, info: strawberry.types.Info, link: MilestoneLinkAddGQLModel) -> MilestoneResultGQLModel:
         loader = getLoaders(info).milestonelinks
         rows = await loader.filter_by(previous_id=link.previous_id, next_id=link.next_id)
         row = next(rows, None)
@@ -557,8 +563,8 @@ class Mutation:
         result.project_id = row.project_id
         return result
 
-    @strawberryA.mutation(description="Removes the milestones link.")
-    async def milestones_link_remove(self, info: strawberryA.types.Info, link: MilestoneLinkAddGQLModel) -> MilestoneResultGQLModel:
+    @strawberry.mutation(description="Removes the milestones link.")
+    async def milestones_link_remove(self, info: strawberry.types.Info, link: MilestoneLinkAddGQLModel) -> MilestoneResultGQLModel:
         loader = getLoaders(info).milestonelinks
         rows = await loader.filter_by(previous_id=link.previous_id, next_id=link.next_id)
         row = next(rows, None)
@@ -571,8 +577,8 @@ class Mutation:
         result.id = link.previous_id
         return result
 
-    @strawberryA.mutation(description="Adds a new milestone.")
-    async def milestone_insert(self, info: strawberryA.types.Info, milestone: MilestoneInsertGQLModel) -> MilestoneResultGQLModel:
+    @strawberry.mutation(description="Adds a new milestone.")
+    async def milestone_insert(self, info: strawberry.types.Info, milestone: MilestoneInsertGQLModel) -> MilestoneResultGQLModel:
         loader = getLoaders(info).milestones
         row = await loader.insert(milestone)
         result = MilestoneResultGQLModel()
@@ -580,8 +586,8 @@ class Mutation:
         result.id = row.id
         return result
 
-    @strawberryA.mutation(description="Update the milestone.")
-    async def milestone_update(self, info: strawberryA.types.Info, milestone: MilestoneUpdateGQLModel) -> MilestoneResultGQLModel:
+    @strawberry.mutation(description="Update the milestone.")
+    async def milestone_update(self, info: strawberry.types.Info, milestone: MilestoneUpdateGQLModel) -> MilestoneResultGQLModel:
         loader = getLoaders(info).milestones
         row = await loader.update(milestone)
         result = MilestoneResultGQLModel()
@@ -592,8 +598,8 @@ class Mutation:
             
         return result
 
-    @strawberryA.mutation(description="Delete the milestone.")
-    async def milestone_delete(self, info: strawberryA.types.Info, id: strawberryA.ID) -> ProjectResultGQLModel:
+    @strawberry.mutation(description="Delete the milestone.")
+    async def milestone_delete(self, info: strawberry.types.Info, id: uuid.UUID) -> ProjectResultGQLModel:
         loader = getLoaders(info).milestonelinks
         rows = await loader.filter_by(previous_id=id)
         linksids = [row.id for row in rows]
@@ -610,8 +616,8 @@ class Mutation:
         result.msg = "ok"
         return result
 
-    @strawberryA.mutation(description="Adds a new finance record.")
-    async def finance_insert(self, info: strawberryA.types.Info, finance: FinanceInsertGQLModel) -> FinanceResultGQLModel:
+    @strawberry.mutation(description="Adds a new finance record.")
+    async def finance_insert(self, info: strawberry.types.Info, finance: FinanceInsertGQLModel) -> FinanceResultGQLModel:
         loader = getLoaders(info).finances
         row = await loader.insert(finance)
         result = FinanceResultGQLModel()
@@ -619,8 +625,8 @@ class Mutation:
         result.id = row.id
         return result
 
-    @strawberryA.mutation(description="Update the finance record.")
-    async def finance_update(self, info: strawberryA.types.Info, finance: FinanceUpdateGQLModel) -> FinanceResultGQLModel:
+    @strawberry.mutation(description="Update the finance record.")
+    async def finance_update(self, info: strawberry.types.Info, finance: FinanceUpdateGQLModel) -> FinanceResultGQLModel:
         loader = getLoaders(info).finances
         row = await loader.update(finance)
         result = FinanceResultGQLModel()
@@ -631,8 +637,8 @@ class Mutation:
             
         return result
 
-    @strawberryA.mutation(description="Adds a new project.")
-    async def project_insert(self, info: strawberryA.types.Info, project: ProjectInsertGQLModel) -> ProjectResultGQLModel:
+    @strawberry.mutation(description="Adds a new project.")
+    async def project_insert(self, info: strawberry.types.Info, project: ProjectInsertGQLModel) -> ProjectResultGQLModel:
         loader = getLoaders(info).projects
         row = await loader.insert(project)
         result = ProjectResultGQLModel()
@@ -640,8 +646,8 @@ class Mutation:
         result.id = row.id
         return result
 
-    @strawberryA.mutation(description="Update the project.")
-    async def project_update(self, info: strawberryA.types.Info, project: ProjectUpdateGQLModel) -> ProjectResultGQLModel:
+    @strawberry.mutation(description="Update the project.")
+    async def project_update(self, info: strawberry.types.Info, project: ProjectUpdateGQLModel) -> ProjectResultGQLModel:
         loader = getLoaders(info).projects
         row = await loader.update(project)
         result = ProjectResultGQLModel()
@@ -661,4 +667,4 @@ class Mutation:
 #
 ###########################################################################################################################
 
-schema = strawberryA.federation.Schema(Query, types=(GroupGQLModel,), mutation=Mutation)
+schema = strawberry.federation.Schema(Query, types=(GroupGQLModel,), mutation=Mutation)
